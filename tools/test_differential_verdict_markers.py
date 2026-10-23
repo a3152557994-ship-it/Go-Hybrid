@@ -74,6 +74,28 @@ class VerdictMarkerParserTests(unittest.TestCase):
         self.assertEqual(self.parse("//\tEXPECTED-VERDICT:\tREJECT\tA1b\r\nfn main() {}\r\n"),
                          ("REJECT", "A1b", []))
 
+    def test_indented_header_is_registered(self):
+        self.assertEqual(self.parse(" \t//\tEXPECTED-VERDICT:\tREJECT A1b (move rule)\r\n"),
+                         ("REJECT", "A1b", []))
+
+    def test_missing_colon_is_not_an_unregistered_helper(self):
+        self.assert_invalid("// EXPECTED-VERDICT REJECT A1\nfn main() {}\n")
+
+    def test_indented_second_header_is_still_ambiguous(self):
+        self.assert_invalid("// EXPECTED-VERDICT: ACCEPT\n  // EXPECTED-VERDICT: REJECT A1\n")
+
+    def test_accept_cannot_carry_a_rejection_rule(self):
+        for verdict in ("ACCEPT", "ACCEPT-MANAGED"):
+            with self.subTest(verdict=verdict):
+                self.assert_invalid(f"// EXPECTED-VERDICT: {verdict} A1\n")
+
+    def test_reject_cannot_silently_discard_trailing_tokens(self):
+        self.assert_invalid("// EXPECTED-VERDICT: REJECT A1 unexpected\n")
+
+    def test_indented_accept_with_parenthetical_explanation_is_valid(self):
+        self.assertEqual(self.parse("  // EXPECTED-VERDICT: ACCEPT (CONTESTED)\n"),
+                         ("ACCEPT", None, []))
+
 
 @unittest.skipUnless(os.name == "posix", "CLI fixture uses POSIX executable scripts")
 class VerdictMarkerCLITests(unittest.TestCase):
@@ -130,6 +152,36 @@ class VerdictMarkerCLITests(unittest.TestCase):
     def test_unregistered_helpers_do_not_break_a_valid_corpus(self):
         result = self.run_case("// deliberately unregistered helper\nfn helper() {}\n")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("FULL AGREEMENT", result.stdout)
+
+    def test_missing_colon_does_not_disappear_beside_a_passing_case(self):
+        result = self.run_case("// EXPECTED-VERDICT REJECT A1\nfn main() {}\n")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertNotIn("FULL AGREEMENT", result.stdout)
+        self.assertIn("corpus error", result.stderr)
+        self.assertIn("02-case.hy", result.stderr)
+
+    def test_indented_duplicate_cannot_be_reported_as_agreement(self):
+        self.assert_malformed_corpus_fails(
+            "// EXPECTED-VERDICT: ACCEPT\n  // EXPECTED-VERDICT: REJECT A1\nfn main() {}\n")
+
+    def test_accept_with_a_rule_cannot_be_reported_as_agreement(self):
+        self.assert_malformed_corpus_fails("// EXPECTED-VERDICT: ACCEPT A1\nfn main() {}\n")
+
+    def test_reject_trailing_tokens_cannot_be_reported_as_agreement(self):
+        self.assert_malformed_corpus_fails("// EXPECTED-VERDICT: REJECT A1 unexpected\nfn main() {}\n")
+
+    def test_indented_mismatching_reject_participates_in_the_result(self):
+        result = self.run_case("  // EXPECTED-VERDICT: REJECT FC\nfn main() {}\n")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("first_rule=A1 expected_rule=FC", result.stdout)
+        self.assertIn("differential reject-side (checker):   0/1", result.stdout)
+        self.assertNotIn("FULL AGREEMENT", result.stdout)
+
+    def test_indented_matching_reject_preserves_full_agreement(self):
+        result = self.run_case(" \t// EXPECTED-VERDICT: REJECT A1 (rule)\r\nfn main() {}\r\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("differential reject-side (checker):   1/1", result.stdout)
         self.assertIn("FULL AGREEMENT", result.stdout)
 
 

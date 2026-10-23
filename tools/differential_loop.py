@@ -40,10 +40,14 @@ DEFAULT_BIN = os.path.join(
     os.environ.get("CARGO_TARGET_DIR", "/home/z/go-hybrid-target"), "debug", "hyb"
 )
 
-# Detect declarations before validating their value: a typo must not turn
-# a registered test into an unregistered helper. Keep parsing on one line.
+# Discover headers before validating their syntax, as corpus_harness.py does:
+# indentation or a missing colon must not silently unregister a corpus case.
+VERDICT_HEADER_RE = re.compile(
+    r"^[ \t]*//[ \t]*EXPECTED-VERDICT\b[^\r\n]*", re.M
+)
 VERDICT_RE = re.compile(
-    r"^//[ \t]*EXPECTED-VERDICT:[ \t]*([^\r\n]*)", re.M
+    r"//[ \t]*EXPECTED-VERDICT:[ \t]*(ACCEPT-MANAGED|ACCEPT|REJECT)"
+    r"(?![-\w])(?:[ \t]+([^\s()]+))?(?:[ \t]+\([^)]*\))?[ \t]*"
 )
 HAZARD_RE = re.compile(
     r"^//\s*RUNTIME-HAZARD:\s*(.+)$", re.M
@@ -59,18 +63,19 @@ def read_expected(path):
     (e.g. corpus 02's deliberate concurrent map writes)."""
     with open(path, encoding="utf-8") as f:
         src = f.read()
-    markers = VERDICT_RE.findall(src)
-    if not markers:
+    headers = VERDICT_HEADER_RE.findall(src)
+    if not headers:
         return None
-    if len(markers) != 1:
+    if len(headers) != 1:
         raise SystemExit(f"corpus error: {path} has multiple EXPECTED-VERDICT markers")
-    fields = markers[0].split()
-    if not fields or fields[0] not in ("ACCEPT-MANAGED", "ACCEPT", "REJECT"):
-        raise SystemExit(f"corpus error: {path} has invalid EXPECTED-VERDICT: {markers[0]!r}")
-    verdict = fields[0]
-    rule = fields[1] if verdict == "REJECT" and len(fields) > 1 else None
+    match = VERDICT_RE.fullmatch(headers[0].strip())
+    if match is None:
+        raise SystemExit(f"corpus error: {path} has malformed EXPECTED-VERDICT header")
+    verdict, rule = match.group(1), match.group(2)
     if verdict == "REJECT" and not rule:
         raise SystemExit(f"corpus error: {path} has REJECT without a rule id")
+    if verdict != "REJECT" and rule:
+        raise SystemExit(f"corpus error: {path} has unexpected rule after {verdict}")
     hazards = [h.strip().lower() for h in HAZARD_RE.findall(src)]
     return verdict, (rule or None), hazards
 
@@ -274,7 +279,11 @@ def main():
     failures = []
 
     for path in files:
-        expected = read_expected(path)
+        try:
+            expected = read_expected(path)
+        except SystemExit as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         expected_output = read_expected_output(path, expected)
         if expected is None:
             continue
