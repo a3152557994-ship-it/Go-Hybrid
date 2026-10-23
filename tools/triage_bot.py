@@ -584,7 +584,8 @@ def main():
     p.set_defaults(fn=cmd_scan)
 
     p = sub.add_parser("approve", help="approve action_required CI runs")
-    p.add_argument("--max", type=int, default=None)
+    p.add_argument("--max", type=int, default=None,
+                   help="maximum approvals (non-negative integer; 0 approves none)")
     p.add_argument("--dry", action="store_true")
     p.set_defaults(fn=cmd_approve)
 
@@ -602,8 +603,14 @@ def main():
     p.set_defaults(fn=cmd_board)
 
     args = ap.parse_args()
-    if args.cmd == "approve" and args.max is None:
-        args.max = load_cfg()["approve_max_per_run"]
+    if args.cmd == "approve":
+        if args.max is None:
+            args.max = load_cfg()["approve_max_per_run"]
+        # Negative slicing selects nearly the entire queue; a malformed
+        # configured default can also remove the cap or crash after API reads.
+        # Reject both before the approval handler loads credentials or clients.
+        if type(args.max) is not int or args.max < 0:
+            ap.error("approve --max must be a non-negative integer")
     if args.cmd == "labels":
         args.dry = not args.apply
     args.fn(args)

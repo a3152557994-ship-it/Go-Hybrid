@@ -1,5 +1,6 @@
 # Hybrid Language: Development Plan
 
+- Contributor validation (2026-10-24): reject negative or non-integer triage approval quotas before token/client access; retain zero and explicit overrides. Eight offline regressions fail on the unchanged baseline's invalid-input cases and pass with the fix; registered in CI and `make check`. Local validation: Python 3.12 tools 395/395, runner 29/29, pinned Rust workspace 1770/1770, corpus 126/126, differential 40/40 accepted + 86/86 rejected. Upstream CI/review and any bounty decision remain pending; no live approvals were exercised.
 - Contributor amendment (2026-10-19, #656): current main already rejects direct pointer-receiver calls on map reads, call results, and literals. Apply its existing addressability rule when selecting method values and task callees too, preserving all other receiver rules. Regression suite covers the two residual defects and addressable controls (19 tests); full workspace/corpus/differential and CI verification remain delivery gates.
 - Contributor validation (2026-10-15): runner now checks linked-worktree Git metadata before setup/commands; wrong SHA and broken gitfile fail closed. Real-worktree regressions plus existing runner/SHA suites: 13 tests passed.
 ## Contributor validation — 2026-10-15

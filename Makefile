@@ -45,6 +45,7 @@ check:
 	@$(PY) -m unittest discover -s tools -p test_check_versions.py -v
 	@$(PY) -m unittest discover -s tools -p test_workload_run.py -v
 	@$(PY) -m unittest discover -s tools -p test_runner_env_report.py -v
+	@$(PY) -m unittest discover -s tools -p test_triage_approve.py -v
 	@$(PY) -m unittest discover -s tools -p test_corpus_harness.py -v
 	@$(PY) -m unittest discover -s tools -p test_package_version.py -v
 	@$(PY) -m unittest discover -s tools/runner -p test_runner.py -v
